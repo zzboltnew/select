@@ -219,14 +219,14 @@ export function DataTable<T extends Record<string, any>>({
         open={showClear}
         onClose={() => setShowClear(false)}
         onConfirm={() => { onClear?.(); setShowClear(false); }}
-        title="高危操作：清空数据"
+        title="清空当前数据"
         danger
         requireTyped="确认清空"
         confirmText="确认清空"
         message={
           <div>
-            <p className="mb-2 font-medium text-red-600">此操作将永久删除当前库中的所有数据，且不可恢复！</p>
-            <p>请谨慎操作。</p>
+            <p className="mb-2 font-medium text-red-600">此操作将清空当前页面对应数据库中的所有数据，且不可恢复。</p>
+            <p className="text-sm text-slate-500">如需清空整个系统数据库，请使用页面右上角的"清空系统数据库"功能。</p>
           </div>
         }
       />

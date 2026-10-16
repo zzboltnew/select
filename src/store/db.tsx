@@ -86,6 +86,9 @@ interface DBContextValue {
   bulkReplace: (table: keyof AppDB, rows: any[]) => void;
   bulkAppend: (table: keyof AppDB, rows: any[], matchKey?: string) => { added: number; updated: number };
   importLedgersWithMembers: (ledgers: ReviewLedger[], members: ReviewLedgerMember[]) => { added: number; updated: number };
+
+  // Clear entire system database (all tables)
+  clearAllDB: () => Promise<void>;
 }
 
 const DBContext = createContext<DBContextValue | null>(null);
@@ -335,16 +338,18 @@ export function DBProvider({ children }: { children: ReactNode }) {
   }, [setDB, persistTable]);
 
   // ---- Import ledgers + members ----
+  // Dedup key: applicant_name + license_item_name (same batch can have multiple applicants/items)
   const importLedgersWithMembers = useCallback((ledgers: ReviewLedger[], members: ReviewLedgerMember[]) => {
     let added = 0;
     let updated = 0;
     setDB((prev) => {
       const existing = prev.review_ledgers;
-      const map = new Map(existing.map((r) => [r.review_batch, r]));
+      const dedupKey = (l: ReviewLedger) => `${l.applicant_name}||${l.license_item_name}`;
+      const map = new Map(existing.map((r) => [dedupKey(r), r]));
       const importedIds = new Set<string>();
       const idMap = new Map<string, string>();
       for (const ledger of ledgers) {
-        const key = ledger.review_batch;
+        const key = dedupKey(ledger);
         if (key && map.has(key)) {
           const existingLedger = map.get(key)!;
           map.set(key, { ...existingLedger, ...ledger, id: existingLedger.id });
@@ -376,6 +381,25 @@ export function DBProvider({ children }: { children: ReactNode }) {
     return { added, updated };
   }, [setDB, persistTable]);
 
+  // ---- Clear entire system database ----
+  const clearAllDB = useCallback(async () => {
+    const tables = [
+      'review_ledger_members',
+      'review_ledgers',
+      'experts',
+      'institution_certificates',
+      'observers',
+      'base_license_types',
+      'base_license_items',
+      'base_review_methods',
+    ];
+    for (const table of tables) {
+      const { error: delErr } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (delErr) console.error(`Failed to clear ${table}:`, delErr);
+    }
+    setDbState(EMPTY_DB);
+  }, []);
+
   const value: DBContextValue = {
     db,
     loading,
@@ -403,6 +427,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
     bulkReplace,
     bulkAppend,
     importLedgersWithMembers,
+    clearAllDB,
   };
 
   return <DBContext.Provider value={value}>{children}</DBContext.Provider>;

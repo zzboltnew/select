@@ -13,6 +13,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 import { DBProvider, useDB } from '@/store/db';
 import ExpertsPage from '@/pages/ExpertsPage';
@@ -23,7 +24,7 @@ import LedgersPage from '@/pages/LedgersPage';
 import SelectionPage from '@/pages/SelectionPage';
 import ResultsPage from '@/pages/ResultsPage';
 import DashboardPage from '@/pages/DashboardPage';
-import { Button } from '@/components/ui';
+import { Button, ConfirmDialog, Toast } from '@/components/ui';
 
 type PageKey = 'dashboard' | 'experts' | 'institutions' | 'observers' | 'base' | 'ledgers' | 'selection' | 'results';
 
@@ -46,10 +47,13 @@ const NAV: NavItem[] = [
 ];
 
 function AppShell() {
-  const { loading, error, reload } = useDB();
+  const { loading, error, reload, clearAllDB } = useDB();
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectionLedgerId, setSelectionLedgerId] = useState<string | null>(null);
+  const [showClearAll, setShowClearAll] = useState(false);
+  const [clearAllLoading, setClearAllLoading] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const goToSelection = (ledgerId: string) => {
     setSelectionLedgerId(ledgerId);
@@ -137,6 +141,12 @@ function AppShell() {
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <span className="hidden sm:inline">管理员</span>
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-100 text-sm font-medium text-sky-700">A</div>
+            <button
+              onClick={() => setShowClearAll(true)}
+              className="ml-2 flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50"
+            >
+              <Trash2 size={14} /> 清空系统数据库
+            </button>
           </div>
         </header>
 
@@ -159,6 +169,37 @@ function AppShell() {
           </div>
         </main>
       </div>
+
+      <ConfirmDialog
+        open={showClearAll}
+        onClose={() => setShowClearAll(false)}
+        onConfirm={async () => {
+          setClearAllLoading(true);
+          await clearAllDB();
+          setClearAllLoading(false);
+          setShowClearAll(false);
+          setToast('系统数据库已全部清空');
+        }}
+        title="极高危操作：清空系统数据库"
+        danger
+        requireTyped="清空全部数据"
+        confirmText={clearAllLoading ? '正在清空...' : '确认清空全部'}
+        message={
+          <div className="space-y-2">
+            <p className="font-medium text-red-600">此操作将删除系统中所有数据库的全部数据，包括：</p>
+            <ul className="ml-4 list-disc text-sm text-red-500">
+              <li>专家库</li>
+              <li>机构证书库</li>
+              <li>观察员库</li>
+              <li>基础数据库（许可类型、许可事项、评审方式）</li>
+              <li>评审台账及专家组成员</li>
+            </ul>
+            <p className="font-medium text-red-600">此操作不可恢复，请确认你已导出备份后再执行！</p>
+          </div>
+        }
+      />
+
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }
