@@ -11,8 +11,10 @@ import {
   LayoutDashboard,
   Menu,
   X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
-import { DBProvider } from '@/store/db';
+import { DBProvider, useDB } from '@/store/db';
 import ExpertsPage from '@/pages/ExpertsPage';
 import InstitutionsPage from '@/pages/InstitutionsPage';
 import ObserversPage from '@/pages/ObserversPage';
@@ -44,6 +46,7 @@ const NAV: NavItem[] = [
 ];
 
 function AppShell() {
+  const { loading, error, reload } = useDB();
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectionLedgerId, setSelectionLedgerId] = useState<string | null>(null);
@@ -138,7 +141,22 @@ function AppShell() {
         </header>
 
         <main className="flex-1 overflow-y-auto bg-slate-50 p-4 lg:p-6">
-          <div className="mx-auto max-w-7xl">{renderPage()}</div>
+          <div className="mx-auto max-w-7xl">
+            {loading ? (
+              <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
+                <Loader2 size={32} className="animate-spin text-sky-500" />
+                <p className="text-sm">正在从数据库加载数据...</p>
+              </div>
+            ) : error ? (
+              <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-500">
+                <AlertCircle size={32} className="text-red-500" />
+                <p className="text-sm">加载失败：{error}</p>
+                <button onClick={() => reload()} className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white hover:bg-sky-700">重试</button>
+              </div>
+            ) : (
+              renderPage()
+            )}
+          </div>
         </main>
       </div>
     </div>
