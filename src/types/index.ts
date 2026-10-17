@@ -158,6 +158,7 @@ export interface AppDB {
   base_license_types: BaseDictionaryItem[];
   base_license_items: BaseDictionaryItem[];
   base_review_methods: BaseDictionaryItem[];
+  base_review_modes: BaseDictionaryItem[];
   review_ledgers: ReviewLedger[];
   review_ledger_members: ReviewLedgerMember[];
 }

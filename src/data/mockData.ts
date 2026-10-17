@@ -305,6 +305,7 @@ export function createInitialDB(): AppDB {
     base_license_types,
     base_license_items,
     base_review_methods,
+    base_review_modes: [] as BaseDictionaryItem[],
     review_ledgers: ledgers,
     review_ledger_members: members,
   };

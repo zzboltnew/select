@@ -18,18 +18,20 @@ const EMPTY_DB: AppDB = {
   base_license_types: [],
   base_license_items: [],
   base_review_methods: [],
+  base_review_modes: [],
   review_ledgers: [],
   review_ledger_members: [],
 };
 
 async function loadAll(): Promise<AppDB> {
-  const [experts, institutions, observers, blt, bli, brm, ledgers, members] = await Promise.all([
+  const [experts, institutions, observers, blt, bli, brm, brmd, ledgers, members] = await Promise.all([
     supabase.from('experts').select('*').then((r) => r.data ?? []),
     supabase.from('institution_certificates').select('*').then((r) => r.data ?? []),
     supabase.from('observers').select('*').then((r) => r.data ?? []),
     supabase.from('base_license_types').select('*').then((r) => r.data ?? []),
     supabase.from('base_license_items').select('*').then((r) => r.data ?? []),
     supabase.from('base_review_methods').select('*').then((r) => r.data ?? []),
+    supabase.from('base_review_modes').select('*').then((r) => r.data ?? []),
     supabase.from('review_ledgers').select('*').then((r) => r.data ?? []),
     supabase.from('review_ledger_members').select('*').then((r) => r.data ?? []),
   ]);
@@ -40,6 +42,7 @@ async function loadAll(): Promise<AppDB> {
     base_license_types: blt as BaseDictionaryItem[],
     base_license_items: bli as BaseDictionaryItem[],
     base_review_methods: brm as BaseDictionaryItem[],
+    base_review_modes: brmd as BaseDictionaryItem[],
     review_ledgers: ledgers as ReviewLedger[],
     review_ledger_members: members as ReviewLedgerMember[],
   };
@@ -68,9 +71,9 @@ interface DBContextValue {
   deleteObserver: (id: string) => void;
 
   // Base dictionaries
-  addBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods', name: string) => void;
-  updateBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods', id: string, name: string) => void;
-  deleteBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods', id: string) => void;
+  addBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', name: string) => void;
+  updateBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string, name: string) => void;
+  deleteBaseItem: (table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string) => void;
 
   // Ledgers
   addLedger: (e: Omit<ReviewLedger, 'id' | 'created_at' | 'updated_at' | 'review_batch'>) => string;
@@ -214,7 +217,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
   }, [setDB, persistTable]);
 
   // ---- Base dictionaries ----
-  const addBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods', name: string) => {
+  const addBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', name: string) => {
     const id = uuid();
     setDB((prev) => {
       const newItem = { id, name };
@@ -224,7 +227,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
     });
   }, [setDB, persistTable]);
 
-  const updateBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods', id: string, name: string) => {
+  const updateBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string, name: string) => {
     setDB((prev) => {
       const next = (prev[table] as BaseDictionaryItem[]).map((x) => (x.id === id ? { ...x, name } : x));
       persistTable(table, next);
@@ -232,7 +235,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
     });
   }, [setDB, persistTable]);
 
-  const deleteBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods', id: string) => {
+  const deleteBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string) => {
     setDB((prev) => {
       const next = (prev[table] as BaseDictionaryItem[]).filter((x) => x.id !== id);
       persistTable(table, next);
@@ -392,6 +395,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
       'base_license_types',
       'base_license_items',
       'base_review_methods',
+      'base_review_modes',
     ];
     for (const table of tables) {
       const { error: delErr } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');

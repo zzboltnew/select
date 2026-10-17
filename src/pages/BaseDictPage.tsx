@@ -5,12 +5,13 @@ import { Button, Input, ConfirmDialog, Toast, EmptyState, DataPreviewModal } fro
 import type { BaseDictionaryItem } from '@/types';
 import { exportBaseDict, downloadBaseDictTemplate, parseExcelFile, rowsToBaseDict } from '@/utils/excel';
 
-type DictTable = 'base_license_types' | 'base_license_items' | 'base_review_methods';
+type DictTable = 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes';
 
 const TABS: { key: DictTable; label: string; fileLabel: string }[] = [
   { key: 'base_license_types', label: '许可类型表', fileLabel: '许可类型' },
   { key: 'base_license_items', label: '许可事项表', fileLabel: '许可事项' },
   { key: 'base_review_methods', label: '评审方式表', fileLabel: '评审方式' },
+  { key: 'base_review_modes', label: '评审模式表', fileLabel: '评审模式' },
 ];
 
 export default function BaseDictPage() {
