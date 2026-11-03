@@ -45,6 +45,33 @@ export interface ExtractResult {
   memberCandidates: Expert[];
 }
 
+export function getEligibleLeaders(
+  experts: Expert[],
+  applicantName: string,
+  licenseItemName: string,
+  excludeIds: string[] = [],
+): Expert[] {
+  return experts.filter(
+    (e) =>
+      baseEligible(e, applicantName) &&
+      !excludeIds.includes(e.id) &&
+      qualMatches(e, licenseItemName, true),
+  );
+}
+
+export function getEligibleMembers(
+  experts: Expert[],
+  opts: ExtractOptions,
+): Expert[] {
+  const excludeIds = opts.excludeExpertIds ?? [];
+  return experts.filter(
+    (e) =>
+      baseEligible(e, opts.applicantName) &&
+      !excludeIds.includes(e.id) &&
+      qualMatches(e, opts.licenseItemName, false),
+  );
+}
+
 /**
  * Leader extraction: 3x pool rule.
  * Target = 1 leader. Pool = 3 candidates (or all eligible if < 3).

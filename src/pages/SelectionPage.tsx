@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   UserCheck, ChevronRight, ChevronLeft, Users, Crown, Eye, Calendar,
-  Check, RefreshCw, Loader2, Phone, Building2, Award, AlertCircle, CheckCircle2,
+  Check, RefreshCw, Loader2, Phone, Building2, Award, AlertCircle, CheckCircle2, X,
 } from 'lucide-react';
 import { useDB } from '@/store/db';
 import { Button, Badge, Toast, Field, Input, Select } from '@/components/ui';
@@ -11,6 +11,8 @@ import {
   extractLeaderCandidates,
   extractMemberCandidates,
   extractSupplementCandidates,
+  getEligibleLeaders,
+  getEligibleMembers,
 } from '@/utils/extraction';
 
 interface Props {
@@ -39,6 +41,8 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [hasExtractedLeader, setHasExtractedLeader] = useState(false);
   const [hasExtractedMembers, setHasExtractedMembers] = useState(false);
+  const [previewList, setPreviewList] = useState<Expert[] | null>(null);
+  const [previewTitle, setPreviewTitle] = useState('');
 
   // Batch form
   const [batchYear, setBatchYear] = useState(String(new Date().getFullYear()));
@@ -71,6 +75,37 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   }, [ledger?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const needMembers = ledger ? Math.max(0, ledger.total_experts_needed - 1) : 0;
+
+  const eligibleLeaderCount = ledger
+    ? getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name).length
+    : 0;
+  const eligibleMemberCount = ledger
+    ? getEligibleMembers(db.experts, {
+        applicantName: ledger.applicant_name,
+        licenseItemName: ledger.license_item_name,
+        totalNeeded: ledger.total_experts_needed,
+        excludeExpertIds: ledger.leader_id ? [ledger.leader_id] : [],
+      }).length
+    : 0;
+
+  const handlePreviewLeaderEligible = () => {
+    if (!ledger) return;
+    const list = getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name);
+    setPreviewList(list);
+    setPreviewTitle(`符合组长条件的专家（共 ${list.length} 人）`);
+  };
+
+  const handlePreviewMemberEligible = () => {
+    if (!ledger) return;
+    const list = getEligibleMembers(db.experts, {
+      applicantName: ledger.applicant_name,
+      licenseItemName: ledger.license_item_name,
+      totalNeeded: ledger.total_experts_needed,
+      excludeExpertIds: ledger.leader_id ? [ledger.leader_id] : [],
+    });
+    setPreviewList(list);
+    setPreviewTitle(`符合组员条件的专家（共 ${list.length} 人）`);
+  };
 
   const handleExtractLeader = () => {
     if (!ledger) return;
@@ -260,7 +295,18 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
             </div>
             <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 text-xs text-amber-700 flex items-center gap-2">
               <AlertCircle size={14} />
-              候选池规则：目标1人，生成3名候选人；不足3人则全部纳入
+              候选池规则：目标1人，生成3名候选人；不足3人则全部纳入。匹配条件：{ledger.license_item_name} 专项资格为"组长"
+            </div>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm text-slate-600">
+                符合组长条件的专家：<span className="font-semibold text-amber-700">{eligibleLeaderCount}</span> 人
+              </span>
+              <button
+                onClick={handlePreviewLeaderEligible}
+                className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-700 hover:underline"
+              >
+                <Eye size={14} /> 预览符合条件人员
+              </button>
             </div>
             {leaderCandidates.length > 0 ? (
               <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -327,7 +373,18 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
             </div>
             <div className="mb-3 rounded-lg bg-sky-50 border border-sky-200 px-4 py-2 text-xs text-sky-700 flex items-center gap-2">
               <AlertCircle size={14} />
-              候选池规则：需求 N={needMembers} 人，候选池 3N={3 * needMembers} 人；不足则全部纳入。排除同单位及已选定组长。
+              候选池规则：需求 N={needMembers} 人，候选池 3N={3 * needMembers} 人；不足则全部纳入。排除同单位及已选定组长。匹配条件：{ledger.license_item_name} 专项资格为"组长"或"组员"
+            </div>
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm text-slate-600">
+                符合组员条件的专家：<span className="font-semibold text-sky-700">{eligibleMemberCount}</span> 人
+              </span>
+              <button
+                onClick={handlePreviewMemberEligible}
+                className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-700 hover:underline"
+              >
+                <Eye size={14} /> 预览符合条件人员
+              </button>
             </div>
             {memberCandidates.length > 0 ? (
               <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-96 overflow-y-auto">
@@ -516,6 +573,70 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
       )}
 
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+      {/* Eligible experts preview modal */}
+      {previewList && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setPreviewList(null)} />
+          <div className="relative w-full max-w-3xl rounded-2xl bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h3 className="text-lg font-semibold text-slate-800">{previewTitle}</h3>
+              <button onClick={() => setPreviewList(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {previewList.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-400">暂无符合条件的专家</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-slate-200">
+                      <th className="px-3 py-2 text-left font-medium text-slate-600">姓名</th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600">工作单位</th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600">职称</th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600">手机</th>
+                      <th className="px-3 py-2 text-left font-medium text-slate-600">专项资格</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewList.map((e) => {
+                      const quals = Object.entries(e.qualifications)
+                        .filter(([, v]) => v === '组长' || v === '组员')
+                        .map(([k, v]) => {
+                          const labels: Record<string, string> = {
+                            highway_bridge_tunnel: '公路工程桥梁隧道工程专项',
+                            highway_grade_b: '公路工程乙级',
+                            highway_grade_c: '公路工程丙级',
+                            waterway_material_b: '水运工程材料乙级',
+                            waterway_material_c: '水运工程材料丙级',
+                            waterway_structure_b: '水运工程结构乙级',
+                          };
+                          return `${labels[k] ?? k}(${v})`;
+                        });
+                      return (
+                        <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="px-3 py-2 font-medium text-slate-800">{e.name}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.work_unit}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.title}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.mobile}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap gap-1">
+                              {quals.map((q, i) => (
+                                <span key={i} className={`rounded px-1.5 py-0.5 text-xs ${q.includes('组长') ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>{q}</span>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
