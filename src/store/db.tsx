@@ -82,6 +82,7 @@ interface DBContextValue {
 
   // Members
   setMembers: (ledgerId: string, expertIds: string[]) => void;
+  replaceMember: (ledgerId: string, oldExpertId: string, newExpertId: string) => void;
   getMembers: (ledgerId: string) => ReviewLedgerMember[];
   clearMembers: (ledgerId: string) => void;
 
@@ -133,9 +134,21 @@ export function DBProvider({ children }: { children: ReactNode }) {
     if (delErr) console.error(`Failed to clear ${table}:`, delErr);
     if (rows.length > 0) {
       const { error: insErr } = await supabase.from(table).insert(rows);
-      if (insErr) console.error(`Failed to insert ${table}:`, insErr);
+      if (insErr) console.error(`Failed to insert ${table}:`, insErr, JSON.stringify(rows.slice(0, 2)));
     }
   }, []);
+
+  const replaceMember = useCallback((ledgerId: string, oldExpertId: string, newExpertId: string) => {
+    setDB((prev) => {
+      const next = prev.review_ledger_members.map((m) =>
+        m.review_ledger_id === ledgerId && m.expert_id === oldExpertId
+          ? { ...m, expert_id: newExpertId }
+          : m,
+      );
+      persistTable('review_ledger_members', next);
+      return { ...prev, review_ledger_members: next };
+    });
+  }, [setDB, persistTable]);
 
   // ---- Experts ----
   const addExpert = useCallback((e: Omit<Expert, 'id' | 'seq_no'>) => {
@@ -426,6 +439,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
     updateLedger,
     deleteLedger,
     setMembers,
+    replaceMember,
     getMembers,
     clearMembers,
     bulkReplace,

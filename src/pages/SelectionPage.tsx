@@ -4,7 +4,7 @@ import {
   Check, RefreshCw, Loader2, Phone, Building2, Award, AlertCircle, CheckCircle2, X,
 } from 'lucide-react';
 import { useDB } from '@/store/db';
-import { Button, Badge, Toast, Field, Input, Select } from '@/components/ui';
+import { Button, Badge, Toast, Field, Input, Select, ConfirmDialog } from '@/components/ui';
 import type { ReviewLedger, Expert } from '@/types';
 import { LEDGER_STATUS_LABELS, LEDGER_STATUS_COLORS } from '@/types';
 import {
@@ -28,7 +28,7 @@ const STEPS = [
 ];
 
 export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
-  const { db, updateLedger, setMembers, getMembers, clearMembers } = useDB();
+  const { db, updateLedger, setMembers, replaceMember, getMembers, clearMembers } = useDB();
   const [selectedLedgerId, setSelectedLedgerId] = useState<string | null>(ledgerId);
   const [step, setStep] = useState(1);
   const [toast, setToast] = useState<string | null>(null);
@@ -44,11 +44,19 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   const [previewList, setPreviewList] = useState<Expert[] | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
 
+  // Re-extraction and replacement state
+  const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
+  const [replaceTarget, setReplaceTarget] = useState<{ role: 'LEADER' | 'MEMBER'; expertId: string; expertName: string } | null>(null);
+  const [replacePickerOpen, setReplacePickerOpen] = useState(false);
+  const [replaceCandidateId, setReplaceCandidateId] = useState<string>('');
+
   // Batch form
   const [batchYear, setBatchYear] = useState(String(new Date().getFullYear()));
   const [batchSeq, setBatchSeq] = useState(1);
 
   const ledger = db.review_ledgers.find((l) => l.id === selectedLedgerId) ?? null;
+  const panelFormed = !!(ledger?.leader_id && getMembers(ledger?.id ?? '').length > 0);
+  const canReExtract = ledger && ledger.status !== 'COMPLETED';
 
   // Sync with prop
   useEffect(() => {
@@ -67,7 +75,8 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
     // Determine step based on status
     if (ledger.status === 'PENDING_EXTRACT' || ledger.status === 'EXTRACTING') setStep(2);
     else if (ledger.status === 'PENDING_BATCH') setStep(4);
-    else if (ledger.status === 'PENDING_RESULT' || ledger.status === 'COMPLETED') setStep(4);
+    else if (ledger.status === 'PENDING_RESULT') setStep(4);
+    else if (ledger.status === 'COMPLETED') setStep(4);
     else setStep(2);
 
     setHasExtractedLeader(!!ledger.leader_id);
@@ -124,6 +133,41 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
     if (!ledger || !selectedLeaderId) { setToast('请勾选1名专家组长'); return; }
     updateLedger(ledger.id, { leader_id: selectedLeaderId, status: 'EXTRACTING' });
     setToast('专家组长已确定');
+  };
+
+  const handleReExtractPanel = () => {
+    if (!ledger) return;
+    clearMembers(ledger.id);
+    updateLedger(ledger.id, { leader_id: '', status: 'PENDING_EXTRACT' });
+    setSelectedLeaderId('');
+    setSelectedMemberIds([]);
+    setLeaderCandidates([]);
+    setMemberCandidates([]);
+    setHasExtractedLeader(false);
+    setHasExtractedMembers(false);
+    setShowReExtractConfirm(false);
+    setStep(2);
+    setToast('已重置专家组，请重新抽取');
+  };
+
+  const handleReplaceExpert = () => {
+    if (!ledger || !replaceTarget || !replaceCandidateId) { setToast('请选择替换人选'); return; }
+    if (replaceTarget.role === 'LEADER') {
+      updateLedger(ledger.id, { leader_id: replaceCandidateId });
+    } else {
+      replaceMember(ledger.id, replaceTarget.expertId, replaceCandidateId);
+    }
+    const newName = db.experts.find((e) => e.id === replaceCandidateId)?.name ?? '';
+    setToast(`已将 ${replaceTarget.expertName} 替换为 ${newName}`);
+    setReplaceTarget(null);
+    setReplacePickerOpen(false);
+    setReplaceCandidateId('');
+  };
+
+  const openReplacePicker = (role: 'LEADER' | 'MEMBER', expertId: string, expertName: string) => {
+    setReplaceTarget({ role, expertId, expertName });
+    setReplaceCandidateId('');
+    setReplacePickerOpen(true);
   };
 
   const handleExtractMembers = () => {
@@ -429,18 +473,45 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
             )}
           </div>
 
-          {/* Summary */}
+          {/* Summary with replace buttons */}
           {(leaderExpert || confirmedMembers.length > 0) && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
-              <h4 className="mb-3 text-sm font-semibold text-emerald-800">已选定专家组</h4>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-emerald-800">已选定专家组</h4>
+                {canReExtract && panelFormed && (
+                  <button
+                    onClick={() => setShowReExtractConfirm(true)}
+                    className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 hover:underline"
+                  >
+                    <RefreshCw size={13} /> 重新组建专家组
+                  </button>
+                )}
+              </div>
+              <div className="space-y-2">
                 {leaderExpert && (
-                  <Badge color="bg-amber-100 text-amber-800 border-amber-200">
-                    <Crown size={12} className="mr-1" /> 组长：{leaderExpert.name}
-                  </Badge>
+                  <div className="flex items-center justify-between rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <Crown size={14} className="text-amber-600" />
+                      <span className="text-sm font-medium text-slate-800">组长：{leaderExpert.name}（{leaderExpert.work_unit}）</span>
+                    </div>
+                    {canReExtract && (
+                      <button
+                        onClick={() => openReplacePicker('LEADER', leaderExpert.id, leaderExpert.name)}
+                        className="text-xs text-sky-600 hover:text-sky-700 hover:underline"
+                      >替换</button>
+                    )}
+                  </div>
                 )}
                 {confirmedMembers.map((m) => (
-                  <Badge key={m.id} color="bg-sky-100 text-sky-700 border-sky-200">组员：{m.name}</Badge>
+                  <div key={m.id} className="flex items-center justify-between rounded-lg bg-sky-50 border border-sky-100 px-3 py-2">
+                    <span className="text-sm font-medium text-slate-800">组员：{m.name}（{m.work_unit}）</span>
+                    {canReExtract && (
+                      <button
+                        onClick={() => openReplacePicker('MEMBER', m.id, m.name)}
+                        className="text-xs text-sky-600 hover:text-sky-700 hover:underline"
+                      >替换</button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -536,25 +607,49 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
 
           {/* Final summary */}
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h4 className="mb-4 text-sm font-semibold text-slate-700">专家组完整信息</h4>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-semibold text-slate-700">专家组完整信息</h4>
+              {canReExtract && panelFormed && (
+                <button
+                  onClick={() => setShowReExtractConfirm(true)}
+                  className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 hover:underline"
+                >
+                  <RefreshCw size={13} /> 重新组建专家组
+                </button>
+              )}
+            </div>
             <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
-                <Crown size={18} className="text-amber-600 mt-0.5" />
-                <div>
-                  <p className="text-xs text-amber-600">专家组长</p>
-                  <p className="text-sm font-medium text-slate-800">{leaderExpert ? `${leaderExpert.name} · ${leaderExpert.work_unit}` : '未选定'}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-sky-50 border border-sky-100">
-                <Users size={18} className="text-sky-600 mt-0.5" />
-                <div>
-                  <p className="text-xs text-sky-600">专家组成员（{confirmedMembers.length}人）</p>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {confirmedMembers.map((m) => (
-                      <span key={m.id} className="text-sm text-slate-700">{m.name}（{m.work_unit}）</span>
-                    ))}
+              <div className="flex items-start justify-between gap-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
+                <div className="flex items-start gap-3">
+                  <Crown size={18} className="text-amber-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-amber-600">专家组长</p>
+                    <p className="text-sm font-medium text-slate-800">{leaderExpert ? `${leaderExpert.name} · ${leaderExpert.work_unit}` : '未选定'}</p>
                   </div>
                 </div>
+                {canReExtract && leaderExpert && (
+                  <button onClick={() => openReplacePicker('LEADER', leaderExpert.id, leaderExpert.name)} className="text-xs text-sky-600 hover:text-sky-700 hover:underline">替换</button>
+                )}
+              </div>
+              <div className="flex items-start justify-between gap-3 p-3 rounded-lg bg-sky-50 border border-sky-100">
+                <div className="flex items-start gap-3">
+                  <Users size={18} className="text-sky-600 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-sky-600">专家组成员（{confirmedMembers.length}人）</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {confirmedMembers.map((m) => (
+                        <span key={m.id} className="text-sm text-slate-700">{m.name}（{m.work_unit}）</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {canReExtract && (
+                  <div className="flex flex-col gap-1">
+                    {confirmedMembers.map((m) => (
+                      <button key={m.id} onClick={() => openReplacePicker('MEMBER', m.id, m.name)} className="text-xs text-sky-600 hover:text-sky-700 hover:underline">替换 {m.name}</button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="flex items-start gap-3 p-3 rounded-lg bg-indigo-50 border border-indigo-100">
                 <Eye size={18} className="text-indigo-600 mt-0.5" />
@@ -573,6 +668,104 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
       )}
 
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+      {/* Re-extract confirmation */}
+      <ConfirmDialog
+        open={showReExtractConfirm}
+        onClose={() => setShowReExtractConfirm(false)}
+        onConfirm={handleReExtractPanel}
+        title="重新组建专家组"
+        danger
+        confirmText="确认重新组建"
+        message={
+          <div>
+            <p className="mb-2 font-medium text-red-600">此操作将清空当前已选定的专家组长和所有组员，需要重新抽取。</p>
+            <p className="text-sm text-slate-500">确定要重新组建专家组吗？</p>
+          </div>
+        }
+      />
+
+      {/* Replace expert confirmation */}
+      <ConfirmDialog
+        open={!!replaceTarget && !replacePickerOpen}
+        onClose={() => setReplaceTarget(null)}
+        onConfirm={() => setReplacePickerOpen(true)}
+        title="替换专家确认"
+        confirmText="选择替换人选"
+        message={
+          <p>确定要替换 {replaceTarget?.role === 'LEADER' ? '专家组长' : '组员'} <span className="font-semibold">{replaceTarget?.expertName}</span> 吗？</p>
+        }
+      />
+
+      {/* Replace expert picker modal */}
+      {replacePickerOpen && replaceTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setReplacePickerOpen(false)} />
+          <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">选择替换人选</h3>
+                <p className="text-sm text-slate-500">替换{replaceTarget.role === 'LEADER' ? '专家组长' : '组员'}：{replaceTarget.expertName}</p>
+              </div>
+              <button onClick={() => setReplacePickerOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              {(() => {
+                const currentIds = new Set([
+                  ...(ledger?.leader_id ? [ledger.leader_id] : []),
+                  ...getMembers(ledger?.id ?? '').map((m) => m.expert_id),
+                ]);
+                const pool = replaceTarget.role === 'LEADER'
+                  ? getEligibleLeaders(db.experts, ledger!.applicant_name, ledger!.license_item_name)
+                      .filter((e) => !currentIds.has(e.id) || e.id === replaceTarget.expertId)
+                  : getEligibleMembers(db.experts, {
+                      applicantName: ledger!.applicant_name,
+                      licenseItemName: ledger!.license_item_name,
+                      totalNeeded: ledger!.total_experts_needed,
+                      excludeExpertIds: Array.from(currentIds).filter((id) => id !== replaceTarget.expertId),
+                    });
+                if (pool.length === 0) {
+                  return <p className="py-8 text-center text-sm text-slate-400">暂无符合条件的替换人选</p>;
+                }
+                return (
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="border-b border-slate-200">
+                        <th className="px-3 py-2 text-left font-medium text-slate-600 w-10">选择</th>
+                        <th className="px-3 py-2 text-left font-medium text-slate-600">姓名</th>
+                        <th className="px-3 py-2 text-left font-medium text-slate-600">工作单位</th>
+                        <th className="px-3 py-2 text-left font-medium text-slate-600">职称</th>
+                        <th className="px-3 py-2 text-left font-medium text-slate-600">手机</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pool.map((e) => (
+                        <tr key={e.id} className={`border-b border-slate-100 hover:bg-sky-50 ${replaceCandidateId === e.id ? 'bg-sky-50' : ''}`}>
+                          <td className="px-3 py-2">
+                            <input type="radio" checked={replaceCandidateId === e.id} onChange={() => setReplaceCandidateId(e.id)} />
+                          </td>
+                          <td className="px-3 py-2 font-medium text-slate-800">{e.name}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.work_unit}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.title}</td>
+                          <td className="px-3 py-2 text-slate-600">{e.mobile}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <Button variant="secondary" onClick={() => setReplacePickerOpen(false)}>取消</Button>
+              <Button onClick={handleReplaceExpert} disabled={!replaceCandidateId}>
+                <Check size={16} /> 确认替换
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Eligible experts preview modal */}
       {previewList && (
