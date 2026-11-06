@@ -20,6 +20,15 @@ interface Props {
   onLedgerChanged: (ledgerId: string) => void;
 }
 
+const QUAL_LABEL_TO_KEY_REVERSE: Record<string, string> = {
+  '公路工程桥梁隧道工程专项': 'highway_bridge_tunnel',
+  '公路工程乙级': 'highway_grade_b',
+  '公路工程丙级': 'highway_grade_c',
+  '水运工程材料乙级': 'waterway_material_b',
+  '水运工程材料丙级': 'waterway_material_c',
+  '水运工程结构乙级': 'waterway_structure_b',
+};
+
 const STEPS = [
   { num: 1, label: '评审申报', icon: CheckCircle2 },
   { num: 2, label: '专家抽取', icon: Users },
@@ -794,6 +803,11 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                 <X size={20} />
               </button>
             </div>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-sky-200" />有资格</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-gray-200" />无资格</span>
+              <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 rounded bg-emerald-200 border border-emerald-400" />匹配评审事项</span>
+            </div>
             <div className="overflow-y-auto p-4">
               {previewList.length === 0 ? (
                 <p className="py-8 text-center text-sm text-slate-400">暂无符合条件的专家</p>
@@ -810,19 +824,15 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                   </thead>
                   <tbody>
                     {previewList.map((e) => {
-                      const quals = Object.entries(e.qualifications)
-                        .filter(([, v]) => v === '组长' || v === '组员')
-                        .map(([k, v]) => {
-                          const labels: Record<string, string> = {
-                            highway_bridge_tunnel: '公路工程桥梁隧道工程专项',
-                            highway_grade_b: '公路工程乙级',
-                            highway_grade_c: '公路工程丙级',
-                            waterway_material_b: '水运工程材料乙级',
-                            waterway_material_c: '水运工程材料丙级',
-                            waterway_structure_b: '水运工程结构乙级',
-                          };
-                          return `${labels[k] ?? k}(${v})`;
-                        });
+                      const ALL_QUALS: { key: keyof typeof e.qualifications; label: string }[] = [
+                        { key: 'highway_bridge_tunnel', label: '公路工程桥梁隧道工程专项' },
+                        { key: 'highway_grade_b', label: '公路工程乙级' },
+                        { key: 'highway_grade_c', label: '公路工程丙级' },
+                        { key: 'waterway_material_b', label: '水运工程材料乙级' },
+                        { key: 'waterway_material_c', label: '水运工程材料丙级' },
+                        { key: 'waterway_structure_b', label: '水运工程结构乙级' },
+                      ];
+                      const matchKey = QUAL_LABEL_TO_KEY_REVERSE[ledger?.license_item_name ?? ''];
                       return (
                         <tr key={e.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="px-3 py-2 font-medium text-slate-800">{e.name}</td>
@@ -831,9 +841,19 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                           <td className="px-3 py-2 text-slate-600">{e.mobile}</td>
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap gap-1">
-                              {quals.map((q, i) => (
-                                <span key={i} className={`rounded px-1.5 py-0.5 text-xs ${q.includes('组长') ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-600'}`}>{q}</span>
-                              ))}
+                              {ALL_QUALS.map((q) => {
+                                const val = e.qualifications[q.key];
+                                const isMatch = q.key === matchKey;
+                                if (isMatch && val) {
+                                  return <span key={q.key} className="rounded px-1.5 py-0.5 text-xs bg-emerald-100 text-emerald-700 border border-emerald-300">{q.label}（{val}）</span>;
+                                } else if (isMatch && !val) {
+                                  return <span key={q.key} className="rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-400 border border-gray-200">{q.label}</span>;
+                                } else if (val) {
+                                  return <span key={q.key} className="rounded px-1.5 py-0.5 text-xs bg-sky-100 text-sky-700">{q.label}（{val}）</span>;
+                                } else {
+                                  return <span key={q.key} className="rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-400">{q.label}</span>;
+                                }
+                              })}
                             </div>
                           </td>
                         </tr>
