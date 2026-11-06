@@ -34,12 +34,22 @@ function qualMatches(expert: Expert, licenseItemName: string, wantLeader: boolea
   return val === '组员' || (includeLeaders && val === '组长');
 }
 
+export type RegionFilter = 'all' | 'local' | 'out_of_province';
+
 export interface ExtractOptions {
   applicantName: string;
   licenseItemName: string;
   totalNeeded: number;
   excludeExpertIds?: string[]; // already-selected (leader or members)
   includeLeaders?: boolean; // when true, 组长-qualified experts are also eligible for member pool
+  regionFilter?: RegionFilter; // filter by expert.region field
+}
+
+function regionMatches(expert: Expert, filter?: RegionFilter): boolean {
+  if (!filter || filter === 'all') return true;
+  if (filter === 'local') return expert.region === '本省';
+  if (filter === 'out_of_province') return expert.region === '外省';
+  return true;
 }
 
 export interface ExtractResult {
@@ -52,12 +62,14 @@ export function getEligibleLeaders(
   applicantName: string,
   licenseItemName: string,
   excludeIds: string[] = [],
+  regionFilter?: RegionFilter,
 ): Expert[] {
   return experts.filter(
     (e) =>
       baseEligible(e, applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, licenseItemName, true),
+      qualMatches(e, licenseItemName, true) &&
+      regionMatches(e, regionFilter),
   );
 }
 
@@ -70,7 +82,8 @@ export function getEligibleMembers(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders) &&
+      regionMatches(e, opts.regionFilter),
   );
 }
 
@@ -83,12 +96,14 @@ export function extractLeaderCandidates(
   applicantName: string,
   licenseItemName: string,
   excludeIds: string[] = [],
+  regionFilter?: RegionFilter,
 ): Expert[] {
   const eligible = experts.filter(
     (e) =>
       baseEligible(e, applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, licenseItemName, true),
+      qualMatches(e, licenseItemName, true) &&
+      regionMatches(e, regionFilter),
   );
   const shuffled = shuffle(eligible);
   const poolSize = 3;
@@ -110,12 +125,44 @@ export function extractMemberCandidates(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders) &&
+      regionMatches(e, opts.regionFilter),
   );
   const shuffled = shuffle(eligible);
   const poolSize = 3 * need;
   if (shuffled.length <= poolSize) return shuffled;
   return shuffled.slice(0, poolSize);
+}
+
+/**
+ * Region-based member extraction: extracts from local and out-of-province pools separately.
+ * Each pool follows the 3x rule. Pools are merged into one candidate list.
+ */
+export interface RegionQuotaOptions extends Omit<ExtractOptions, 'totalNeeded' | 'regionFilter'> {
+  localNeeded: number;
+  outOfProvinceNeeded: number;
+}
+
+export function extractMemberCandidatesByRegion(
+  experts: Expert[],
+  opts: RegionQuotaOptions,
+): Expert[] {
+  const excludeIds = opts.excludeExpertIds ?? [];
+  const baseFilter = (e: Expert) =>
+    baseEligible(e, opts.applicantName) &&
+    !excludeIds.includes(e.id) &&
+    qualMatches(e, opts.licenseItemName, false, opts.includeLeaders);
+
+  const localEligible = shuffle(experts.filter((e) => baseFilter(e) && e.region === '本省'));
+  const outerEligible = shuffle(experts.filter((e) => baseFilter(e) && e.region === '外省'));
+
+  const localPoolSize = 3 * opts.localNeeded;
+  const outerPoolSize = 3 * opts.outOfProvinceNeeded;
+
+  const localPool = localEligible.length <= localPoolSize ? localEligible : localEligible.slice(0, localPoolSize);
+  const outerPool = outerEligible.length <= outerPoolSize ? outerEligible : outerEligible.slice(0, outerPoolSize);
+
+  return [...localPool, ...outerPool];
 }
 
 /**
@@ -136,7 +183,8 @@ export function extractSupplementCandidates(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !exclude.has(e.id) &&
-      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders) &&
+      regionMatches(e, opts.regionFilter),
   );
   const shuffled = shuffle(eligible);
   const poolSize = missing * 3;

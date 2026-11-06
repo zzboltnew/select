@@ -10,9 +10,11 @@ import { LEDGER_STATUS_LABELS, LEDGER_STATUS_COLORS } from '@/types';
 import {
   extractLeaderCandidates,
   extractMemberCandidates,
+  extractMemberCandidatesByRegion,
   extractSupplementCandidates,
   getEligibleLeaders,
   getEligibleMembers,
+  type RegionFilter,
 } from '@/utils/extraction';
 
 interface Props {
@@ -53,6 +55,12 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   const [previewList, setPreviewList] = useState<Expert[] | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [includeLeadersInMembers, setIncludeLeadersInMembers] = useState(false);
+
+  // Region filter state
+  const [leaderLocalChecked, setLeaderLocalChecked] = useState(true);
+  const [leaderOuterChecked, setLeaderOuterChecked] = useState(true);
+  const [memberLocalNeeded, setMemberLocalNeeded] = useState(0);
+  const [memberOuterNeeded, setMemberOuterNeeded] = useState(0);
 
   // Re-extraction and replacement state
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
@@ -95,8 +103,14 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
 
   const needMembers = ledger ? Math.max(0, ledger.total_experts_needed - 1) : 0;
 
+  const leaderRegionFilter: RegionFilter = leaderLocalChecked && leaderOuterChecked
+    ? 'all'
+    : leaderLocalChecked ? 'local'
+    : leaderOuterChecked ? 'out_of_province'
+    : 'all';
+
   const eligibleLeaderCount = ledger
-    ? getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name).length
+    ? getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name, [], leaderRegionFilter).length
     : 0;
   const eligibleMemberCount = ledger
     ? getEligibleMembers(db.experts, {
@@ -110,9 +124,10 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
 
   const handlePreviewLeaderEligible = () => {
     if (!ledger) return;
-    const list = getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name);
+    const list = getEligibleLeaders(db.experts, ledger.applicant_name, ledger.license_item_name, [], leaderRegionFilter);
     setPreviewList(list);
-    setPreviewTitle(`符合组长条件的专家（共 ${list.length} 人）`);
+    const regionLabel = leaderLocalChecked && leaderOuterChecked ? '全部' : leaderLocalChecked ? '仅本省' : leaderOuterChecked ? '仅外省' : '全部';
+    setPreviewTitle(`符合组长条件的专家（共 ${list.length} 人）· ${regionLabel}`);
   };
 
   const handlePreviewMemberEligible = () => {
@@ -130,9 +145,10 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
 
   const handleExtractLeader = () => {
     if (!ledger) return;
+    if (!leaderLocalChecked && !leaderOuterChecked) { setToast('请至少选择一个专家区域'); return; }
     setExtracting(true);
     setTimeout(() => {
-      const candidates = extractLeaderCandidates(db.experts, ledger.applicant_name, ledger.license_item_name);
+      const candidates = extractLeaderCandidates(db.experts, ledger.applicant_name, ledger.license_item_name, [], leaderRegionFilter);
       setLeaderCandidates(candidates);
       setHasExtractedLeader(true);
       setExtracting(false);
@@ -185,15 +201,28 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   const handleExtractMembers = () => {
     if (!ledger) return;
     if (!ledger.leader_id) { setToast('请先确定专家组长'); return; }
+    const useRegionQuota = memberLocalNeeded > 0 || memberOuterNeeded > 0;
     setExtracting(true);
     setTimeout(() => {
-      const candidates = extractMemberCandidates(db.experts, {
-        applicantName: ledger.applicant_name,
-        licenseItemName: ledger.license_item_name,
-        totalNeeded: ledger.total_experts_needed,
-        excludeExpertIds: [ledger.leader_id],
-        includeLeaders: includeLeadersInMembers,
-      });
+      let candidates: Expert[];
+      if (useRegionQuota) {
+        candidates = extractMemberCandidatesByRegion(db.experts, {
+          applicantName: ledger.applicant_name,
+          licenseItemName: ledger.license_item_name,
+          excludeExpertIds: [ledger.leader_id],
+          includeLeaders: includeLeadersInMembers,
+          localNeeded: memberLocalNeeded,
+          outOfProvinceNeeded: memberOuterNeeded,
+        });
+      } else {
+        candidates = extractMemberCandidates(db.experts, {
+          applicantName: ledger.applicant_name,
+          licenseItemName: ledger.license_item_name,
+          totalNeeded: ledger.total_experts_needed,
+          excludeExpertIds: [ledger.leader_id],
+          includeLeaders: includeLeadersInMembers,
+        });
+      }
       setMemberCandidates(candidates);
       setHasExtractedMembers(true);
       setExtracting(false);
@@ -355,10 +384,32 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
               <AlertCircle size={14} />
               候选池规则：目标1人，生成3名候选人；不足3人则全部纳入。匹配条件：{ledger.license_item_name} 专项资格为"组长"
             </div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm text-slate-600">
-                符合组长条件的专家：<span className="font-semibold text-amber-700">{eligibleLeaderCount}</span> 人
-              </span>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-slate-600">
+                  符合组长条件的专家：<span className="font-semibold text-amber-700">{eligibleLeaderCount}</span> 人
+                </span>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={leaderLocalChecked}
+                      onChange={(e) => setLeaderLocalChecked(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    本省专家
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={leaderOuterChecked}
+                      onChange={(e) => setLeaderOuterChecked(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    外省专家
+                  </label>
+                </div>
+              </div>
               <button
                 onClick={handlePreviewLeaderEligible}
                 className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-700 hover:underline"
@@ -374,6 +425,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                       <th className="px-4 py-2 text-left font-medium text-slate-600 w-10">选择</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">姓名</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">工作单位</th>
+                      <th className="px-4 py-2 text-left font-medium text-slate-600">专家区域</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">职称</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">手机</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">资格</th>
@@ -387,6 +439,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                         </td>
                         <td className="px-4 py-3 font-medium text-slate-800">{e.name}</td>
                         <td className="px-4 py-3 text-slate-600">{e.work_unit}</td>
+                        <td className="px-4 py-3"><Badge color={e.region === '本省' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-violet-50 text-violet-600 border-violet-100'}>{e.region || '—'}</Badge></td>
                         <td className="px-4 py-3 text-slate-600">{e.title}</td>
                         <td className="px-4 py-3 text-slate-600">{e.mobile}</td>
                         <td className="px-4 py-3"><Badge color="bg-sky-100 text-sky-700 border-sky-200">组长</Badge></td>
@@ -455,6 +508,43 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                 <Eye size={14} /> 预览符合条件人员
               </button>
             </div>
+            <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg bg-slate-50 border border-slate-200 px-4 py-2">
+              <span className="text-xs font-medium text-slate-500">区域名额：</span>
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                本省专家
+                <select
+                  value={memberLocalNeeded}
+                  onChange={(e) => setMemberLocalNeeded(Number(e.target.value))}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                >
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                人
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                外省专家
+                <select
+                  value={memberOuterNeeded}
+                  onChange={(e) => setMemberOuterNeeded(Number(e.target.value))}
+                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-400"
+                >
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+                人
+              </label>
+              {(memberLocalNeeded > 0 || memberOuterNeeded > 0) && (
+                <span className="text-xs text-sky-600">
+                  合计需求 {memberLocalNeeded + memberOuterNeeded} 人，候选池 {3 * (memberLocalNeeded + memberOuterNeeded)} 人
+                </span>
+              )}
+              {(memberLocalNeeded === 0 && memberOuterNeeded === 0) && (
+                <span className="text-xs text-slate-400">未指定区域名额时，按默认需求抽取</span>
+              )}
+            </div>
             {memberCandidates.length > 0 ? (
               <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
@@ -463,6 +553,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                       <th className="px-4 py-2 text-left font-medium text-slate-600 w-10">勾选</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">姓名</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">工作单位</th>
+                      <th className="px-4 py-2 text-left font-medium text-slate-600">专家区域</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">职称</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">手机</th>
                       <th className="px-4 py-2 text-left font-medium text-slate-600">资格</th>
@@ -476,6 +567,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
                         </td>
                         <td className="px-4 py-3 font-medium text-slate-800">{e.name}</td>
                         <td className="px-4 py-3 text-slate-600">{e.work_unit}</td>
+                        <td className="px-4 py-3"><Badge color={e.region === '本省' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-violet-50 text-violet-600 border-violet-100'}>{e.region || '—'}</Badge></td>
                         <td className="px-4 py-3 text-slate-600">{e.title}</td>
                         <td className="px-4 py-3 text-slate-600">{e.mobile}</td>
                         <td className="px-4 py-3">
