@@ -24,13 +24,14 @@ function baseEligible(expert: Expert, applicantName: string): boolean {
   return true;
 }
 
-function qualMatches(expert: Expert, licenseItemName: string, wantLeader: boolean): boolean {
+function qualMatches(expert: Expert, licenseItemName: string, wantLeader: boolean, includeLeaders = false): boolean {
   const qkey = QUAL_LABEL_TO_KEY[licenseItemName];
   if (!qkey) return false;
   const val = expert.qualifications[qkey];
   if (!val) return false;
   if (wantLeader) return val === '组长';
-  return val === '组长' || val === '组员';
+  // For member matching: default only 组员; if includeLeaders, also accept 组长
+  return val === '组员' || (includeLeaders && val === '组长');
 }
 
 export interface ExtractOptions {
@@ -38,6 +39,7 @@ export interface ExtractOptions {
   licenseItemName: string;
   totalNeeded: number;
   excludeExpertIds?: string[]; // already-selected (leader or members)
+  includeLeaders?: boolean; // when true, 组长-qualified experts are also eligible for member pool
 }
 
 export interface ExtractResult {
@@ -68,7 +70,7 @@ export function getEligibleMembers(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, opts.licenseItemName, false),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
   );
 }
 
@@ -108,7 +110,7 @@ export function extractMemberCandidates(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !excludeIds.includes(e.id) &&
-      qualMatches(e, opts.licenseItemName, false),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
   );
   const shuffled = shuffle(eligible);
   const poolSize = 3 * need;
@@ -134,7 +136,7 @@ export function extractSupplementCandidates(
     (e) =>
       baseEligible(e, opts.applicantName) &&
       !exclude.has(e.id) &&
-      qualMatches(e, opts.licenseItemName, false),
+      qualMatches(e, opts.licenseItemName, false, opts.includeLeaders),
   );
   const shuffled = shuffle(eligible);
   const poolSize = missing * 3;

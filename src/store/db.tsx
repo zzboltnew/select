@@ -130,11 +130,17 @@ export function DBProvider({ children }: { children: ReactNode }) {
 
   // Helper: optimistic update + persist to Supabase
   const persistTable = useCallback(async (table: string, rows: any[]) => {
+    // Delete all existing rows, then insert the new set
     const { error: delErr } = await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (delErr) console.error(`Failed to clear ${table}:`, delErr);
+    if (delErr) { console.error(`Failed to clear ${table}:`, delErr); return; }
     if (rows.length > 0) {
-      const { error: insErr } = await supabase.from(table).insert(rows);
-      if (insErr) console.error(`Failed to insert ${table}:`, insErr, JSON.stringify(rows.slice(0, 2)));
+      // Insert in batches of 200 to avoid payload limits
+      const BATCH = 200;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const batch = rows.slice(i, i + BATCH);
+        const { error: insErr } = await supabase.from(table).insert(batch);
+        if (insErr) { console.error(`Failed to insert ${table} (batch ${i}):`, insErr, JSON.stringify(batch.slice(0, 2))); }
+      }
     }
   }, []);
 
@@ -325,6 +331,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
   const bulkAppend = useCallback((table: keyof AppDB, rows: any[], matchKey?: string) => {
     let added = 0;
     let updated = 0;
+    let nextRows: any[] = [];
     setDB((prev) => {
       const existing = prev[table] as any[];
       let next: any[];
@@ -347,9 +354,11 @@ export function DBProvider({ children }: { children: ReactNode }) {
         }
         next = Array.from(map.values());
       }
-      persistTable(table as string, next);
+      nextRows = next;
       return { ...prev, [table]: next };
     });
+    // Persist after state update is queued
+    persistTable(table as string, nextRows);
     return { added, updated };
   }, [setDB, persistTable]);
 

@@ -43,6 +43,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
   const [hasExtractedMembers, setHasExtractedMembers] = useState(false);
   const [previewList, setPreviewList] = useState<Expert[] | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
+  const [includeLeadersInMembers, setIncludeLeadersInMembers] = useState(false);
 
   // Re-extraction and replacement state
   const [showReExtractConfirm, setShowReExtractConfirm] = useState(false);
@@ -94,6 +95,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
         licenseItemName: ledger.license_item_name,
         totalNeeded: ledger.total_experts_needed,
         excludeExpertIds: ledger.leader_id ? [ledger.leader_id] : [],
+        includeLeaders: includeLeadersInMembers,
       }).length
     : 0;
 
@@ -111,9 +113,10 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
       licenseItemName: ledger.license_item_name,
       totalNeeded: ledger.total_experts_needed,
       excludeExpertIds: ledger.leader_id ? [ledger.leader_id] : [],
+      includeLeaders: includeLeadersInMembers,
     });
     setPreviewList(list);
-    setPreviewTitle(`符合组员条件的专家（共 ${list.length} 人）`);
+    setPreviewTitle(`符合组员条件的专家（共 ${list.length} 人）${includeLeadersInMembers ? '（含组长候选人）' : ''}`);
   };
 
   const handleExtractLeader = () => {
@@ -180,6 +183,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
         licenseItemName: ledger.license_item_name,
         totalNeeded: ledger.total_experts_needed,
         excludeExpertIds: [ledger.leader_id],
+        includeLeaders: includeLeadersInMembers,
       });
       setMemberCandidates(candidates);
       setHasExtractedMembers(true);
@@ -210,6 +214,7 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
           licenseItemName: ledger.license_item_name,
           totalNeeded: ledger.total_experts_needed,
           excludeExpertIds: [ledger.leader_id],
+          includeLeaders: includeLeadersInMembers,
         },
         Array.from(alreadyInPool),
         Array.from(alreadySelected),
@@ -417,12 +422,23 @@ export default function SelectionPage({ ledgerId, onLedgerChanged }: Props) {
             </div>
             <div className="mb-3 rounded-lg bg-sky-50 border border-sky-200 px-4 py-2 text-xs text-sky-700 flex items-center gap-2">
               <AlertCircle size={14} />
-              候选池规则：需求 N={needMembers} 人，候选池 3N={3 * needMembers} 人；不足则全部纳入。排除同单位及已选定组长。匹配条件：{ledger.license_item_name} 专项资格为"组长"或"组员"
+              候选池规则：需求 N={needMembers} 人，候选池 3N={3 * needMembers} 人；不足则全部纳入。排除同单位及已选定组长。匹配条件：{ledger.license_item_name} 专项资格为"组员"{includeLeadersInMembers ? '或"组长"' : ''}
             </div>
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-sm text-slate-600">
-                符合组员条件的专家：<span className="font-semibold text-sky-700">{eligibleMemberCount}</span> 人
-              </span>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-slate-600">
+                  符合组员条件的专家：<span className="font-semibold text-sky-700">{eligibleMemberCount}</span> 人
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeLeadersInMembers}
+                    onChange={(e) => setIncludeLeadersInMembers(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                  />
+                  组长参与抽选
+                </label>
+              </div>
               <button
                 onClick={handlePreviewMemberEligible}
                 className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-700 hover:underline"
