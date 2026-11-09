@@ -347,12 +347,14 @@ export function DBProvider({ children }: { children: ReactNode }) {
     let added = 0;
     let updated = 0;
     let next: any[];
+    const toInsert: any[] = [];
+    const toUpdate: { id: string; patch: any }[] = [];
 
     if (!matchKey) {
-      // Ensure ids exist
       for (const row of rows) {
         if (!row.id) row.id = uuid();
         if (!row.seq_no && table === 'experts') row.seq_no = existing.length + added + 1;
+        toInsert.push(row);
         added++;
       }
       next = [...existing, ...rows];
@@ -361,12 +363,16 @@ export function DBProvider({ children }: { children: ReactNode }) {
       for (const row of rows) {
         const key = row[matchKey];
         if (key && map.has(key)) {
-          map.set(key, { ...map.get(key), ...row });
+          const existingRow = map.get(key)!;
+          const merged = { ...existingRow, ...row };
+          map.set(key, merged);
+          toUpdate.push({ id: existingRow.id, patch: row });
           updated++;
         } else {
           if (!row.id) row.id = uuid();
           if (!row.seq_no && table === 'experts') row.seq_no = existing.length + added + 1;
           map.set(key || uuid(), row);
+          toInsert.push(row);
           added++;
         }
       }
@@ -374,10 +380,27 @@ export function DBProvider({ children }: { children: ReactNode }) {
     }
 
     setDbState((prev) => ({ ...prev, [table]: next }));
-    // Persist the full table after state update
-    persistTableBulk(table as string, next);
+
+    // Persist: targeted inserts and updates — no destructive delete-all
+    (async () => {
+      // Insert new rows in batches
+      if (toInsert.length > 0) {
+        const BATCH = 200;
+        for (let i = 0; i < toInsert.length; i += BATCH) {
+          const batch = toInsert.slice(i, i + BATCH);
+          const { error: insErr } = await supabase.from(table as string).insert(batch);
+          if (insErr) console.error(`Failed to bulk-insert into ${table} (batch ${i}):`, insErr);
+        }
+      }
+      // Update matched rows individually
+      for (const { id, patch } of toUpdate) {
+        const { error: updErr } = await supabase.from(table as string).update(patch).eq('id', id);
+        if (updErr) console.error(`Failed to bulk-update ${table} row ${id}:`, updErr);
+      }
+    })();
+
     return { added, updated };
-  }, [persistTableBulk]);
+  }, []);
 
   // ---- Import ledgers + members ----
   const importLedgersWithMembers = useCallback((ledgers: ReviewLedger[], members: ReviewLedgerMember[]) => {
@@ -420,10 +443,37 @@ export function DBProvider({ children }: { children: ReactNode }) {
       review_ledger_members: nextMembers,
     }));
 
-    persistTableBulk('review_ledgers', nextLedgers);
-    persistTableBulk('review_ledger_members', nextMembers);
+    // Targeted persist: insert new ledgers, update matched ones
+    (async () => {
+      for (const ledger of ledgers) {
+        const mappedId = idMap.get(ledger.id) ?? ledger.id;
+        if (mappedId === ledger.id && !existing.some((e) => e.id === ledger.id)) {
+          // New ledger — insert
+          const { error: insErr } = await supabase.from('review_ledgers').insert([ledger]);
+          if (insErr) console.error(`Failed to insert ledger ${ledger.id}:`, insErr);
+        } else {
+          // Existing ledger — update
+          const { patch } = { patch: ledger };
+          const { error: updErr } = await supabase.from('review_ledgers').update(patch).eq('id', mappedId);
+          if (updErr) console.error(`Failed to update ledger ${mappedId}:`, updErr);
+        }
+      }
+      // Delete old members for updated ledgers, then insert all imported members
+      for (const ledgerId of importedIds) {
+        await supabase.from('review_ledger_members').delete().eq('review_ledger_id', ledgerId);
+      }
+      if (importedMembers.length > 0) {
+        const BATCH = 200;
+        for (let i = 0; i < importedMembers.length; i += BATCH) {
+          const batch = importedMembers.slice(i, i + BATCH);
+          const { error: insErr } = await supabase.from('review_ledger_members').insert(batch);
+          if (insErr) console.error(`Failed to insert members (batch ${i}):`, insErr);
+        }
+      }
+    })();
+
     return { added, updated };
-  }, [persistTableBulk]);
+  }, []);
 
   // ---- Clear entire system database ----
   const clearAllDB = useCallback(async () => {
