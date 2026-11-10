@@ -52,6 +52,8 @@ interface DBContextValue {
   db: AppDB;
   loading: boolean;
   error: string | null;
+  dbError: string | null;
+  clearDbError: () => void;
   reload: () => Promise<void>;
   setDB: (updater: (prev: AppDB) => AppDB) => void;
 
@@ -101,6 +103,7 @@ export function DBProvider({ children }: { children: ReactNode }) {
   const [db, setDbState] = useState<AppDB>(EMPTY_DB);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Ref to always access the latest db state without re-creating callbacks
   const dbRef = useRef(db);
@@ -132,23 +135,41 @@ export function DBProvider({ children }: { children: ReactNode }) {
     setDbState((prev) => updater(prev));
   }, []);
 
-  // Helper: targeted single-row insert
-  const insertRow = useCallback(async (table: string, row: any) => {
+  // Helper: targeted single-row insert — returns error string on failure
+  const insertRow = useCallback(async (table: string, row: any): Promise<string | null> => {
     const { error: insErr } = await supabase.from(table).insert([row]);
-    if (insErr) console.error(`Failed to insert into ${table}:`, insErr);
+    if (insErr) {
+      console.error(`Failed to insert into ${table}:`, insErr);
+      return insErr.message;
+    }
+    return null;
   }, []);
 
-  // Helper: targeted single-row update
-  const updateRow = useCallback(async (table: string, id: string, patch: any) => {
+  // Helper: targeted single-row update — returns error string on failure
+  const updateRow = useCallback(async (table: string, id: string, patch: any): Promise<string | null> => {
     const { error: updErr } = await supabase.from(table).update(patch).eq('id', id);
-    if (updErr) console.error(`Failed to update ${table}:`, updErr);
+    if (updErr) {
+      console.error(`Failed to update ${table}:`, updErr);
+      return updErr.message;
+    }
+    return null;
   }, []);
 
-  // Helper: targeted single-row delete
-  const deleteRow = useCallback(async (table: string, id: string) => {
+  // Helper: targeted single-row delete — returns error string on failure
+  const deleteRow = useCallback(async (table: string, id: string): Promise<string | null> => {
     const { error: delErr } = await supabase.from(table).delete().eq('id', id);
-    if (delErr) console.error(`Failed to delete from ${table}:`, delErr);
+    if (delErr) {
+      console.error(`Failed to delete from ${table}:`, delErr);
+      return delErr.message;
+    }
+    return null;
   }, []);
+
+  // On any DB write failure: show error and reload from server to re-sync
+  const handleWriteError = useCallback((msg: string) => {
+    setDbError(msg);
+    reload();
+  }, [reload]);
 
   // Helper: full table replace (delete all + insert all) — used only for bulk operations
   const persistTableBulk = useCallback(async (table: string, rows: any[]) => {
@@ -171,87 +192,87 @@ export function DBProvider({ children }: { children: ReactNode }) {
     const seq = currentExperts.length ? Math.max(...currentExperts.map((x) => x.seq_no)) + 1 : 1;
     const newExpert = { ...e, id, seq_no: seq };
     setDbState((prev) => ({ ...prev, experts: [...prev.experts, newExpert] }));
-    insertRow('experts', newExpert);
-  }, [insertRow]);
+    insertRow('experts', newExpert).then((err) => { if (err) handleWriteError(`保存专家失败：${err}`); });
+  }, [insertRow, handleWriteError]);
 
   const updateExpert = useCallback((id: string, patch: Partial<Expert>) => {
     setDbState((prev) => ({
       ...prev,
       experts: prev.experts.map((x) => (x.id === id ? { ...x, ...patch } : x)),
     }));
-    updateRow('experts', id, patch);
-  }, [updateRow]);
+    updateRow('experts', id, patch).then((err) => { if (err) handleWriteError(`更新专家失败：${err}`); });
+  }, [updateRow, handleWriteError]);
 
   const deleteExpert = useCallback((id: string) => {
     setDbState((prev) => ({ ...prev, experts: prev.experts.filter((x) => x.id !== id) }));
-    deleteRow('experts', id);
-  }, [deleteRow]);
+    deleteRow('experts', id).then((err) => { if (err) handleWriteError(`删除专家失败：${err}`); });
+  }, [deleteRow, handleWriteError]);
 
   // ---- Institutions ----
   const addInstitution = useCallback((e: Omit<InstitutionCertificate, 'id'>) => {
     const id = uuid();
     const newInst = { ...e, id };
     setDbState((prev) => ({ ...prev, institution_certificates: [...prev.institution_certificates, newInst] }));
-    insertRow('institution_certificates', newInst);
-  }, [insertRow]);
+    insertRow('institution_certificates', newInst).then((err) => { if (err) handleWriteError(`保存机构失败：${err}`); });
+  }, [insertRow, handleWriteError]);
 
   const updateInstitution = useCallback((id: string, patch: Partial<InstitutionCertificate>) => {
     setDbState((prev) => ({
       ...prev,
       institution_certificates: prev.institution_certificates.map((x) => (x.id === id ? { ...x, ...patch } : x)),
     }));
-    updateRow('institution_certificates', id, patch);
-  }, [updateRow]);
+    updateRow('institution_certificates', id, patch).then((err) => { if (err) handleWriteError(`更新机构失败：${err}`); });
+  }, [updateRow, handleWriteError]);
 
   const deleteInstitution = useCallback((id: string) => {
     setDbState((prev) => ({ ...prev, institution_certificates: prev.institution_certificates.filter((x) => x.id !== id) }));
-    deleteRow('institution_certificates', id);
-  }, [deleteRow]);
+    deleteRow('institution_certificates', id).then((err) => { if (err) handleWriteError(`删除机构失败：${err}`); });
+  }, [deleteRow, handleWriteError]);
 
   // ---- Observers ----
   const addObserver = useCallback((e: Omit<Observer, 'id'>) => {
     const id = uuid();
     const newObs = { ...e, id };
     setDbState((prev) => ({ ...prev, observers: [...prev.observers, newObs] }));
-    insertRow('observers', newObs);
-  }, [insertRow]);
+    insertRow('observers', newObs).then((err) => { if (err) handleWriteError(`保存观察员失败：${err}`); });
+  }, [insertRow, handleWriteError]);
 
   const updateObserver = useCallback((id: string, patch: Partial<Observer>) => {
     setDbState((prev) => ({
       ...prev,
       observers: prev.observers.map((x) => (x.id === id ? { ...x, ...patch } : x)),
     }));
-    updateRow('observers', id, patch);
-  }, [updateRow]);
+    updateRow('observers', id, patch).then((err) => { if (err) handleWriteError(`更新观察员失败：${err}`); });
+  }, [updateRow, handleWriteError]);
 
   const deleteObserver = useCallback((id: string) => {
     setDbState((prev) => ({ ...prev, observers: prev.observers.filter((x) => x.id !== id) }));
-    deleteRow('observers', id);
-  }, [deleteRow]);
+    deleteRow('observers', id).then((err) => { if (err) handleWriteError(`删除观察员失败：${err}`); });
+  }, [deleteRow, handleWriteError]);
 
   // ---- Base dictionaries ----
   const addBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', name: string) => {
     const id = uuid();
     const newItem = { id, name };
     setDbState((prev) => ({ ...prev, [table]: [...(prev[table] as BaseDictionaryItem[]), newItem] }));
-    insertRow(table, newItem);
-  }, [insertRow]);
+    insertRow(table, newItem).then((err) => { if (err) handleWriteError(`保存失败：${err}`); });
+  }, [insertRow, handleWriteError]);
 
   const updateBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string, name: string) => {
     setDbState((prev) => ({
       ...prev,
       [table]: (prev[table] as BaseDictionaryItem[]).map((x) => (x.id === id ? { ...x, name } : x)),
     }));
-    updateRow(table, id, { name });
-  }, [updateRow]);
+    updateRow(table, id, { name }).then((err) => { if (err) handleWriteError(`更新失败：${err}`); });
+  }, [updateRow, handleWriteError]);
 
   const deleteBaseItem = useCallback((table: 'base_license_types' | 'base_license_items' | 'base_review_methods' | 'base_review_modes', id: string) => {
     setDbState((prev) => ({
       ...prev,
       [table]: (prev[table] as BaseDictionaryItem[]).filter((x) => x.id !== id),
     }));
-    deleteRow(table, id);
-  }, [deleteRow]);
+    deleteRow(table, id).then((err) => { if (err) handleWriteError(`删除失败：${err}`); });
+  }, [deleteRow, handleWriteError]);
 
   // ---- Ledgers ----
   const addLedger = useCallback((e: Omit<ReviewLedger, 'id' | 'created_at' | 'updated_at' | 'review_batch'>) => {
@@ -259,9 +280,9 @@ export function DBProvider({ children }: { children: ReactNode }) {
     const now = new Date().toISOString();
     const ledger: ReviewLedger = { ...e, id, created_at: now, updated_at: now, review_batch: '' };
     setDbState((prev) => ({ ...prev, review_ledgers: [...prev.review_ledgers, ledger] }));
-    insertRow('review_ledgers', ledger);
+    insertRow('review_ledgers', ledger).then((err) => { if (err) handleWriteError(`保存台账失败：${err}`); });
     return id;
-  }, [insertRow]);
+  }, [insertRow, handleWriteError]);
 
   const updateLedger = useCallback((id: string, patch: Partial<ReviewLedger>) => {
     const updatedPatch = { ...patch, updated_at: new Date().toISOString() };
@@ -269,8 +290,8 @@ export function DBProvider({ children }: { children: ReactNode }) {
       ...prev,
       review_ledgers: prev.review_ledgers.map((x) => (x.id === id ? { ...x, ...updatedPatch } : x)),
     }));
-    updateRow('review_ledgers', id, updatedPatch);
-  }, [updateRow]);
+    updateRow('review_ledgers', id, updatedPatch).then((err) => { if (err) handleWriteError(`更新台账失败：${err}`); });
+  }, [updateRow, handleWriteError]);
 
   const deleteLedger = useCallback((id: string) => {
     setDbState((prev) => ({
@@ -278,9 +299,8 @@ export function DBProvider({ children }: { children: ReactNode }) {
       review_ledgers: prev.review_ledgers.filter((x) => x.id !== id),
       review_ledger_members: prev.review_ledger_members.filter((m) => m.review_ledger_id !== id),
     }));
-    // Delete ledger (members cascade via FK)
-    deleteRow('review_ledgers', id);
-  }, [deleteRow]);
+    deleteRow('review_ledgers', id).then((err) => { if (err) handleWriteError(`删除台账失败：${err}`); });
+  }, [deleteRow, handleWriteError]);
 
   // ---- Members ----
   const setMembers = useCallback((ledgerId: string, expertIds: string[]) => {
@@ -295,16 +315,15 @@ export function DBProvider({ children }: { children: ReactNode }) {
     const next = [...others, ...newMembers];
     setDbState((prev) => ({ ...prev, review_ledger_members: next }));
 
-    // Targeted: delete only this ledger's members, then insert new ones
-    supabase.from('review_ledger_members').delete().eq('review_ledger_id', ledgerId).then(({ error }) => {
-      if (error) { console.error('Failed to clear members:', error); return; }
+    (async () => {
+      const { error: delErr } = await supabase.from('review_ledger_members').delete().eq('review_ledger_id', ledgerId);
+      if (delErr) { handleWriteError(`清空组员失败：${delErr.message}`); return; }
       if (newMembers.length > 0) {
-        supabase.from('review_ledger_members').insert(newMembers).then(({ error: insErr }) => {
-          if (insErr) console.error('Failed to insert members:', insErr);
-        });
+        const { error: insErr } = await supabase.from('review_ledger_members').insert(newMembers);
+        if (insErr) handleWriteError(`保存组员失败：${insErr.message}`);
       }
-    });
-  }, []);
+    })();
+  }, [handleWriteError]);
 
   const replaceMember = useCallback((ledgerId: string, oldExpertId: string, newExpertId: string) => {
     setDbState((prev) => ({
@@ -315,14 +334,13 @@ export function DBProvider({ children }: { children: ReactNode }) {
           : m,
       ),
     }));
-    // Targeted update: find the member row and update expert_id
     const member = dbRef.current.review_ledger_members.find(
       (m) => m.review_ledger_id === ledgerId && m.expert_id === oldExpertId,
     );
     if (member) {
-      updateRow('review_ledger_members', member.id, { expert_id: newExpertId });
+      updateRow('review_ledger_members', member.id, { expert_id: newExpertId }).then((err) => { if (err) handleWriteError(`替换组员失败：${err}`); });
     }
-  }, [updateRow]);
+  }, [updateRow, handleWriteError]);
 
   const getMembers = useCallback((ledgerId: string) => db.review_ledger_members.filter((m) => m.review_ledger_id === ledgerId), [db.review_ledger_members]);
 
@@ -332,14 +350,14 @@ export function DBProvider({ children }: { children: ReactNode }) {
       review_ledger_members: prev.review_ledger_members.filter((m) => m.review_ledger_id !== ledgerId),
     }));
     supabase.from('review_ledger_members').delete().eq('review_ledger_id', ledgerId).then(({ error }) => {
-      if (error) console.error('Failed to clear members:', error);
+      if (error) handleWriteError(`清空组员失败：${error.message}`);
     });
-  }, []);
+  }, [handleWriteError]);
 
   // ---- Bulk import ----
   const bulkReplace = useCallback((table: keyof AppDB, rows: any[]) => {
     setDbState((prev) => ({ ...prev, [table]: rows }));
-    persistTableBulk(table as string, rows);
+    persistTableBulk(table as string, rows).then(() => {});
   }, [persistTableBulk]);
 
   const bulkAppend = useCallback((table: keyof AppDB, rows: any[], matchKey?: string) => {
@@ -383,20 +401,20 @@ export function DBProvider({ children }: { children: ReactNode }) {
 
     // Persist: targeted inserts and updates — no destructive delete-all
     (async () => {
-      // Insert new rows in batches
+      let hadError = false;
       if (toInsert.length > 0) {
         const BATCH = 200;
         for (let i = 0; i < toInsert.length; i += BATCH) {
           const batch = toInsert.slice(i, i + BATCH);
           const { error: insErr } = await supabase.from(table as string).insert(batch);
-          if (insErr) console.error(`Failed to bulk-insert into ${table} (batch ${i}):`, insErr);
+          if (insErr) { console.error(`Failed to bulk-insert into ${table} (batch ${i}):`, insErr); hadError = true; }
         }
       }
-      // Update matched rows individually
       for (const { id, patch } of toUpdate) {
         const { error: updErr } = await supabase.from(table as string).update(patch).eq('id', id);
-        if (updErr) console.error(`Failed to bulk-update ${table} row ${id}:`, updErr);
+        if (updErr) { console.error(`Failed to bulk-update ${table} row ${id}:`, updErr); hadError = true; }
       }
+      if (hadError) handleWriteError('部分数据保存失败，已从服务器重新同步');
     })();
 
     return { added, updated };
@@ -445,20 +463,17 @@ export function DBProvider({ children }: { children: ReactNode }) {
 
     // Targeted persist: insert new ledgers, update matched ones
     (async () => {
+      let hadError = false;
       for (const ledger of ledgers) {
         const mappedId = idMap.get(ledger.id) ?? ledger.id;
         if (mappedId === ledger.id && !existing.some((e) => e.id === ledger.id)) {
-          // New ledger — insert
           const { error: insErr } = await supabase.from('review_ledgers').insert([ledger]);
-          if (insErr) console.error(`Failed to insert ledger ${ledger.id}:`, insErr);
+          if (insErr) { console.error(`Failed to insert ledger ${ledger.id}:`, insErr); hadError = true; }
         } else {
-          // Existing ledger — update
-          const { patch } = { patch: ledger };
-          const { error: updErr } = await supabase.from('review_ledgers').update(patch).eq('id', mappedId);
-          if (updErr) console.error(`Failed to update ledger ${mappedId}:`, updErr);
+          const { error: updErr } = await supabase.from('review_ledgers').update(ledger).eq('id', mappedId);
+          if (updErr) { console.error(`Failed to update ledger ${mappedId}:`, updErr); hadError = true; }
         }
       }
-      // Delete old members for updated ledgers, then insert all imported members
       for (const ledgerId of importedIds) {
         await supabase.from('review_ledger_members').delete().eq('review_ledger_id', ledgerId);
       }
@@ -467,9 +482,10 @@ export function DBProvider({ children }: { children: ReactNode }) {
         for (let i = 0; i < importedMembers.length; i += BATCH) {
           const batch = importedMembers.slice(i, i + BATCH);
           const { error: insErr } = await supabase.from('review_ledger_members').insert(batch);
-          if (insErr) console.error(`Failed to insert members (batch ${i}):`, insErr);
+          if (insErr) { console.error(`Failed to insert members (batch ${i}):`, insErr); hadError = true; }
         }
       }
+      if (hadError) handleWriteError('部分台账数据保存失败，已从服务器重新同步');
     })();
 
     return { added, updated };
@@ -499,6 +515,8 @@ export function DBProvider({ children }: { children: ReactNode }) {
     db,
     loading,
     error,
+    dbError,
+    clearDbError: () => setDbError(null),
     reload,
     setDB,
     addExpert,

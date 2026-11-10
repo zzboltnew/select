@@ -47,7 +47,7 @@ const NAV: NavItem[] = [
 ];
 
 function AppShell() {
-  const { loading, error, reload, clearAllDB } = useDB();
+  const { loading, error, dbError, clearDbError, reload, clearAllDB } = useDB();
   const [page, setPage] = useState<PageKey>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectionLedgerId, setSelectionLedgerId] = useState<string | null>(null);
@@ -200,6 +200,20 @@ function AppShell() {
       />
 
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+
+      {dbError && (
+        <div className="fixed bottom-4 right-4 z-50 flex items-start gap-3 rounded-xl border border-red-200 bg-white px-4 py-3 shadow-lg">
+          <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-500" />
+          <div className="min-w-[200px] max-w-[400px]">
+            <p className="text-sm font-medium text-red-700">数据保存异常</p>
+            <p className="mt-1 text-xs text-slate-600">{dbError}</p>
+            <p className="mt-1 text-xs text-slate-400">数据已从服务器重新同步，请重试操作。</p>
+          </div>
+          <button onClick={clearDbError} className="ml-2 shrink-0 text-slate-400 hover:text-slate-600">
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
