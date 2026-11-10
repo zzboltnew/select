@@ -402,23 +402,24 @@ export function DBProvider({ children }: { children: ReactNode }) {
     // Persist: targeted inserts and updates — no destructive delete-all
     (async () => {
       let hadError = false;
+      let errMsg = '';
       if (toInsert.length > 0) {
         const BATCH = 200;
         for (let i = 0; i < toInsert.length; i += BATCH) {
           const batch = toInsert.slice(i, i + BATCH);
           const { error: insErr } = await supabase.from(table as string).insert(batch);
-          if (insErr) { console.error(`Failed to bulk-insert into ${table} (batch ${i}):`, insErr); hadError = true; }
+          if (insErr) { console.error(`Failed to bulk-insert into ${table} (batch ${i}):`, insErr); hadError = true; errMsg = insErr.message; }
         }
       }
       for (const { id, patch } of toUpdate) {
         const { error: updErr } = await supabase.from(table as string).update(patch).eq('id', id);
-        if (updErr) { console.error(`Failed to bulk-update ${table} row ${id}:`, updErr); hadError = true; }
+        if (updErr) { console.error(`Failed to bulk-update ${table} row ${id}:`, updErr); hadError = true; errMsg = updErr.message; }
       }
-      if (hadError) handleWriteError('部分数据保存失败，已从服务器重新同步');
+      if (hadError) handleWriteError(`部分数据保存失败：${errMsg}`);
     })();
 
     return { added, updated };
-  }, []);
+  }, [handleWriteError]);
 
   // ---- Import ledgers + members ----
   const importLedgersWithMembers = useCallback((ledgers: ReviewLedger[], members: ReviewLedgerMember[]) => {
@@ -464,14 +465,15 @@ export function DBProvider({ children }: { children: ReactNode }) {
     // Targeted persist: insert new ledgers, update matched ones
     (async () => {
       let hadError = false;
+      let errMsg = '';
       for (const ledger of ledgers) {
         const mappedId = idMap.get(ledger.id) ?? ledger.id;
         if (mappedId === ledger.id && !existing.some((e) => e.id === ledger.id)) {
           const { error: insErr } = await supabase.from('review_ledgers').insert([ledger]);
-          if (insErr) { console.error(`Failed to insert ledger ${ledger.id}:`, insErr); hadError = true; }
+          if (insErr) { console.error(`Failed to insert ledger ${ledger.id}:`, insErr); hadError = true; errMsg = insErr.message; }
         } else {
           const { error: updErr } = await supabase.from('review_ledgers').update(ledger).eq('id', mappedId);
-          if (updErr) { console.error(`Failed to update ledger ${mappedId}:`, updErr); hadError = true; }
+          if (updErr) { console.error(`Failed to update ledger ${mappedId}:`, updErr); hadError = true; errMsg = updErr.message; }
         }
       }
       for (const ledgerId of importedIds) {
@@ -482,14 +484,14 @@ export function DBProvider({ children }: { children: ReactNode }) {
         for (let i = 0; i < importedMembers.length; i += BATCH) {
           const batch = importedMembers.slice(i, i + BATCH);
           const { error: insErr } = await supabase.from('review_ledger_members').insert(batch);
-          if (insErr) { console.error(`Failed to insert members (batch ${i}):`, insErr); hadError = true; }
+          if (insErr) { console.error(`Failed to insert members (batch ${i}):`, insErr); hadError = true; errMsg = insErr.message; }
         }
       }
-      if (hadError) handleWriteError('部分台账数据保存失败，已从服务器重新同步');
+      if (hadError) handleWriteError(`部分台账数据保存失败：${errMsg}`);
     })();
 
     return { added, updated };
-  }, []);
+  }, [handleWriteError]);
 
   // ---- Clear entire system database ----
   const clearAllDB = useCallback(async () => {

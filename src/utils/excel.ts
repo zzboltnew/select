@@ -228,7 +228,7 @@ export function downloadExpertTemplate() {
   const headers: Record<string, string> = {};
   for (const c of EXPERT_COLUMNS) headers[c.label] = '';
   for (const qc of qualColumns()) headers[qc.label] = '';
-  const ws = XLSX.utils.json_to_sheet([headers], { header: Object.keys(headers) });
+  const ws = XLSX.utils.json_to_sheet([], { header: Object.keys(headers) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '专家库模板');
   downloadWorkbook(wb, '专家库导入模板.xlsx');
@@ -237,7 +237,7 @@ export function downloadExpertTemplate() {
 export function downloadInstitutionTemplate() {
   const headers: Record<string, string> = {};
   for (const c of INSTITUTION_COLUMNS) headers[c.label] = '';
-  const ws = XLSX.utils.json_to_sheet([headers], { header: Object.keys(headers) });
+  const ws = XLSX.utils.json_to_sheet([], { header: Object.keys(headers) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '机构证书库模板');
   downloadWorkbook(wb, '机构证书库导入模板.xlsx');
@@ -246,7 +246,7 @@ export function downloadInstitutionTemplate() {
 export function downloadObserverTemplate() {
   const headers: Record<string, string> = {};
   for (const c of OBSERVER_COLUMNS) headers[c.label] = '';
-  const ws = XLSX.utils.json_to_sheet([headers], { header: Object.keys(headers) });
+  const ws = XLSX.utils.json_to_sheet([], { header: Object.keys(headers) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '观察员库模板');
   downloadWorkbook(wb, '观察员库导入模板.xlsx');
@@ -255,7 +255,7 @@ export function downloadObserverTemplate() {
 export function downloadBaseDictTemplate(sheetName: string, filename: string) {
   const headers: Record<string, string> = {};
   for (const c of BASE_DICT_COLUMNS) headers[c.label] = '';
-  const ws = XLSX.utils.json_to_sheet([headers], { header: Object.keys(headers) });
+  const ws = XLSX.utils.json_to_sheet([], { header: Object.keys(headers) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   downloadWorkbook(wb, filename);
@@ -283,34 +283,42 @@ export function parseExcelFile(file: File): Promise<Record<string, any>[]> {
 }
 
 export function rowsToExperts(rows: Record<string, any>[]): Expert[] {
-  return rows.map((row) => {
-    const base = rowToExpert(row);
-    return { ...base, id: uuid() } as Expert;
-  });
+  return rows
+    .filter((row) => String(row['姓名'] ?? '').trim() !== '')
+    .map((row) => {
+      const base = rowToExpert(row);
+      return { ...base, id: uuid() } as Expert;
+    });
 }
 
 export function rowsToInstitutions(rows: Record<string, any>[]): InstitutionCertificate[] {
-  return rows.map((row) => {
-    const item: any = { id: uuid() };
-    for (const c of INSTITUTION_COLUMNS) item[c.key] = row[c.label] ?? '';
-    return item as InstitutionCertificate;
-  });
+  return rows
+    .filter((row) => String(row['名称'] ?? '').trim() !== '')
+    .map((row) => {
+      const item: any = { id: uuid() };
+      for (const c of INSTITUTION_COLUMNS) item[c.key] = row[c.label] ?? '';
+      return item as InstitutionCertificate;
+    });
 }
 
 export function rowsToObservers(rows: Record<string, any>[]): Observer[] {
-  return rows.map((row) => {
-    const item: any = { id: uuid() };
-    for (const c of OBSERVER_COLUMNS) item[c.key] = row[c.label] ?? '';
-    return item as Observer;
-  });
+  return rows
+    .filter((row) => String(row['姓名'] ?? '').trim() !== '')
+    .map((row) => {
+      const item: any = { id: uuid() };
+      for (const c of OBSERVER_COLUMNS) item[c.key] = row[c.label] ?? '';
+      return item as Observer;
+    });
 }
 
 export function rowsToBaseDict(rows: Record<string, any>[]): BaseDictionaryItem[] {
-  return rows.map((row) => {
-    const item: any = { id: uuid() };
-    for (const c of BASE_DICT_COLUMNS) item[c.key] = row[c.label] ?? '';
-    return item as BaseDictionaryItem;
-  });
+  return rows
+    .filter((row) => String(row['名称'] ?? '').trim() !== '')
+    .map((row) => {
+      const item: any = { id: uuid() };
+      for (const c of BASE_DICT_COLUMNS) item[c.key] = row[c.label] ?? '';
+      return item as BaseDictionaryItem;
+    });
 }
 
 // ============ Data preview / copy helpers ============
@@ -392,7 +400,7 @@ export function exportLedgers(
 export function downloadLedgerTemplate() {
   const headers: Record<string, string> = {};
   for (const c of LEDGER_COLUMNS) headers[c.label] = '';
-  const ws = XLSX.utils.json_to_sheet([headers], { header: Object.keys(headers) });
+  const ws = XLSX.utils.json_to_sheet([], { header: Object.keys(headers) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '评审台账模板');
   downloadWorkbook(wb, '评审台账导入模板.xlsx');
@@ -413,7 +421,9 @@ export function rowsToLedgers(
     statusReverse[v] = k as LedgerStatus;
   }
   const allMembers: ReviewLedgerMember[] = [];
-  const ledgers = rows.map((row) => {
+  const ledgers = rows
+    .filter((row) => String(row['申请人名称'] ?? '').trim() !== '')
+    .map((row) => {
     const ledgerId = uuid();
     const item: any = {
       id: ledgerId,
