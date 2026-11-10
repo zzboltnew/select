@@ -10,7 +10,7 @@ with `USING (true)` — the data is intentionally shared/public.
 1. **experts** — 专家库
    - id (uuid PK), seq_no (int), is_enabled (bool), region, name, work_unit,
      post_status, unit_location, title, is_leader_qualified (bool),
-     qualifications (jsonb), id_card, gender, birth_year (int), education,
+     qualifications (jsonb), id_card, gender, education,
      position, phone, mobile, email, address, postcode, remarks
 
 2. **institution_certificates** — 机构证书库
@@ -65,7 +65,6 @@ CREATE TABLE IF NOT EXISTS experts (
   qualifications jsonb NOT NULL DEFAULT '{}'::jsonb,
   id_card text NOT NULL DEFAULT '',
   gender text NOT NULL DEFAULT '',
-  birth_year integer NOT NULL DEFAULT 0,
   education text NOT NULL DEFAULT '',
   position text NOT NULL DEFAULT '',
   phone text NOT NULL DEFAULT '',

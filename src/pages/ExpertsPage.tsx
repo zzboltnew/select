@@ -34,7 +34,6 @@ const emptyExpert: Omit<Expert, 'id' | 'seq_no'> = {
   qualifications: {},
   id_card: '',
   gender: '男',
-  birth_year: 1980,
   education: '大学本科',
   position: '',
   phone: '',
@@ -221,9 +220,6 @@ export default function ExpertsPage() {
               <option value="男">男</option>
               <option value="女">女</option>
             </Select>
-          </Field>
-          <Field label="出生年份">
-            <Input type="number" value={form.birth_year} onChange={(e) => setForm({ ...form, birth_year: Number(e.target.value) })} />
           </Field>
           <Field label="学历">
             <Select value={form.education} onChange={(e) => setForm({ ...form, education: e.target.value })}>

@@ -25,7 +25,6 @@ export interface Expert {
   qualifications: Qualifications;
   id_card: string;
   gender: string;
-  birth_year: number;
   education: string;
   position: string;
   phone: string;

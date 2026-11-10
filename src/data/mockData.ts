@@ -108,7 +108,6 @@ function genExperts(count: number): Expert[] {
       qualifications: genQualifications(),
       id_card: genIdCard(),
       gender: pick(GENDERS),
-      birth_year: randInt(1955, 1985),
       education: pick(EDUCATIONS),
       position: pick(POSITIONS),
       phone: '010-' + randInt(10000000, 99999999),

@@ -24,7 +24,6 @@ export const EXPERT_COLUMNS: { key: keyof Expert; label: string; type: 'string' 
   { key: 'is_leader_qualified', label: '是否担任组长', type: 'boolean' },
   { key: 'id_card', label: '身份证号', type: 'string' },
   { key: 'gender', label: '性别', type: 'string' },
-  { key: 'birth_year', label: '出生年份', type: 'number' },
   { key: 'education', label: '学历', type: 'string' },
   { key: 'position', label: '职务', type: 'string' },
   { key: 'phone', label: '电话', type: 'string' },

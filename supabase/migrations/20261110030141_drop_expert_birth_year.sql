@@ -1,0 +1,1 @@
+ALTER TABLE experts DROP COLUMN IF EXISTS birth_year;
