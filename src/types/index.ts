@@ -149,6 +149,10 @@ export const LEDGER_STATUS_COLORS: Record<LedgerStatus, string> = {
 
 export const REVIEW_RESULT_OPTIONS: ReviewResult[] = ['通过', '终止', '不通过'];
 
+export function hasLeaderQualification(qual: Qualifications): boolean {
+  return QUALIFICATION_KEYS.some((qk) => qual[qk.key] === '组长');
+}
+
 // ============ DB Shape (persisted) ============
 
 export interface AppDB {

@@ -4,7 +4,7 @@ import { useDB } from '@/store/db';
 import { DataTable, type Column } from '@/components/DataTable';
 import { Modal, Button, Field, Input, Select, Textarea, Badge, ConfirmDialog, Toast, EmptyState, DataPreviewModal } from '@/components/ui';
 import type { Expert, Qualifications, QualificationRole } from '@/types';
-import { QUALIFICATION_KEYS } from '@/types';
+import { QUALIFICATION_KEYS, hasLeaderQualification } from '@/types';
 import {
   exportExperts,
   downloadExpertTemplate,
@@ -208,10 +208,10 @@ export default function ExpertsPage() {
             </Select>
           </Field>
           <Field label="是否担任组长">
-            <Select value={form.is_leader_qualified ? 'true' : 'false'} onChange={(e) => setForm({ ...form, is_leader_qualified: e.target.value === 'true' })}>
-              <option value="false">否</option>
-              <option value="true">是</option>
-            </Select>
+            <div className="flex h-9 items-center rounded border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+              {form.is_leader_qualified ? '是' : '否'}
+              <span className="ml-2 text-xs text-slate-400">（根据专项资格自动判断）</span>
+            </div>
           </Field>
           <Field label="身份证号">
             <Input value={form.id_card} onChange={(e) => setForm({ ...form, id_card: e.target.value })} />
@@ -257,10 +257,10 @@ export default function ExpertsPage() {
               <Field key={qk.key} label={QUAL_LABELS[qk.key]}>
                 <Select
                   value={form.qualifications[qk.key] ?? ''}
-                  onChange={(e) => setForm({
-                    ...form,
-                    qualifications: { ...form.qualifications, [qk.key]: e.target.value as QualificationRole },
-                  })}
+                  onChange={(e) => {
+                    const newQual = { ...form.qualifications, [qk.key]: e.target.value as QualificationRole };
+                    setForm({ ...form, qualifications: newQual, is_leader_qualified: hasLeaderQualification(newQual) });
+                  }}
                 >
                   <option value="">无</option>
                   <option value="组长">组长</option>

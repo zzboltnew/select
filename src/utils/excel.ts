@@ -6,7 +6,7 @@ import type {
   BaseDictionaryItem,
   Qualifications,
 } from '@/types';
-import { QUALIFICATION_KEYS } from '@/types';
+import { QUALIFICATION_KEYS, hasLeaderQualification } from '@/types';
 import { uuid } from '@/data/mockData';
 import type { ReviewLedgerMember } from '@/types';
 
@@ -157,6 +157,10 @@ function expertToRow(e: Expert): Record<string, any> {
 function rowToExpert(row: Record<string, any>): Omit<Expert, 'id'> {
   const e: any = { qualifications: {} };
   for (const c of EXPERT_COLUMNS) {
+    if (c.key === 'is_leader_qualified') {
+      // Auto-derived from qualifications below
+      continue;
+    }
     const val = row[c.label];
     if (c.type === 'boolean') {
       e[c.key] = val === '是' || val === 'true' || val === true;
@@ -170,6 +174,7 @@ function rowToExpert(row: Record<string, any>): Omit<Expert, 'id'> {
     const qkey = qc.key.replace('qual_', '') as keyof Qualifications;
     e.qualifications[qkey] = (row[qc.label] as any) ?? '';
   }
+  e.is_leader_qualified = hasLeaderQualification(e.qualifications as Qualifications);
   return e as Omit<Expert, 'id'>;
 }
 
